@@ -1,17 +1,18 @@
 import socket
 import threading
 
-# 处理从服务器接收消息的线程函数
 def receive_messages(client_socket):
     while True:
         try:
             message = client_socket.recv(1024).decode()  # 接收服务器的消息
             if not message:
                 break  # 如果消息为空，说明连接关闭
+            # 检查消息是否为昵称提示
             if "请输入你的昵称" not in message:
                 print(message)  # 只有当消息不是昵称提示时才打印
         except:
             break  # 出现错误时断开连接
+
 
 # 创建客户端 socket
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # TCP连接

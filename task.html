@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天室</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        #chat-container {
+            width: 400px;
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #chat-log {
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            border-bottom: 1px solid #ddd;
+            font-size: 14px;
+            background-color: #f9f9f9;
+        }
+
+        #chat-log p {
+            margin: 5px 0;
+            padding: 8px;
+            background-color: #e0f7fa;
+            border-radius: 8px;
+            word-wrap: break-word;
+            max-width: 90%;
+        }
+
+        #chat-log p.self {
+            background-color: #bbdefb;
+            align-self: flex-end;
+        }
+
+        #chat-log::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #chat-log::-webkit-scrollbar-thumb {
+            background-color: #ccc;
+            border-radius: 4px;
+        }
+
+        #chat-log::-webkit-scrollbar-track {
+            background-color: #f4f4f9;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="chat-container">
+        <h1>聊天室</h1>
+        <div id="chat-log"></div>
+    </div>
+
+    <script>
+        const chatLog = document.getElementById('chat-log');
+
+        // 创建 WebSocket 连接
+        const socket = new WebSocket('ws://127.0.0.1:5678');
+
+        // 监听消息事件，显示消息
+        socket.onmessage = function (event) {
+            const message = event.data;
+            const newMessageElement = document.createElement('p');
+            newMessageElement.textContent = message;
+            chatLog.appendChild(newMessageElement);
+            chatLog.scrollTop = chatLog.scrollHeight; // 滚动到底部
+        };
+
+        // 监听连接关闭事件
+        socket.onclose = function () {
+            const newMessageElement = document.createElement('p');
+            newMessageElement.textContent = '连接已关闭。';
+            chatLog.appendChild(newMessageElement);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        };
+    </script>
+</body>
+
+</html>

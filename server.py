@@ -1,17 +1,23 @@
 import socket
 import threading
+import asyncio
+import websockets
 
 clients = {}  # 存储客户端的昵称和socket的映射关系
+web_clients = set()  # 存储网页客户端的 WebSocket 连接
 
 
-# 广播消息给所有客户端
+# 广播消息给所有普通客户端和网页
 def broadcast_message(message, exclude_socket=None):
+    # 发送给socket客户端
     for client_socket in clients.values():
         if client_socket != exclude_socket:  # 排除发送消息的客户端
             try:
                 client_socket.send(message.encode())
             except:
                 client_socket.close()
+    # 发送给WebSocket客户端（网页）
+    asyncio.run(broadcast_to_web_clients(message))
 
 
 # 私聊消息发送
@@ -61,6 +67,24 @@ def handle_client(client_socket):
     broadcast_message(f"{nickname} 离开了聊天室。")
 
 
+# WebSocket广播
+async def broadcast_to_web_clients(message):
+    if web_clients:
+        await asyncio.wait([client.send(message) for client in web_clients])
+
+
+# WebSocket 处理器，处理来自网页的连接
+async def handle_websocket(websocket, path):
+    web_clients.add(websocket)
+    try:
+        while True:
+            await websocket.recv()  # 暂时不处理网页发来的消息
+    except:
+        pass
+    finally:
+        web_clients.remove(websocket)
+
+
 # 创建服务器
 def start_server():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -77,4 +101,15 @@ def start_server():
         client_thread.start()
 
 
-start_server()
+# 启动 WebSocket 服务器
+def start_websocket_server():
+    start_server_task = websockets.serve(handle_websocket, "127.0.0.1", 5678)
+    asyncio.get_event_loop().run_until_complete(start_server_task)
+    asyncio.get_event_loop().run_forever()
+
+
+if __name__ == "__main__":
+    # 启动socket聊天服务器
+    threading.Thread(target=start_server).start()
+    # 启动 WebSocket 服务器以和网页通信
+    start_websocket_server()
