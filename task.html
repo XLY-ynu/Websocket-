@@ -56,6 +56,34 @@
             align-self: flex-end;
         }
 
+        #chat-input-container {
+            display: flex;
+            padding: 10px;
+        }
+
+        #message-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        #send-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: #2196f3;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #send-button:hover {
+            background-color: #1976d2;
+        }
+
         #chat-log::-webkit-scrollbar {
             width: 8px;
         }
@@ -68,37 +96,128 @@
         #chat-log::-webkit-scrollbar-track {
             background-color: #f4f4f9;
         }
+
+        #nickname-container {
+            display: flex;
+            justify-content: center;
+            padding: 10px;
+        }
+
+        #nickname-input {
+            padding: 8px;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        #login-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+
+        #login-button:hover {
+            background-color: #45a049;
+        }
     </style>
 </head>
 
 <body>
-    <div id="chat-container">
+    <div id="chat-container" style="display:none;">
         <h1>聊天室</h1>
         <div id="chat-log"></div>
+        <div id="chat-input-container">
+            <input type="text" id="message-input" placeholder="输入消息..." />
+            <button id="send-button">发送</button>
+        </div>
+    </div>
+
+    <div id="nickname-container">
+        <input type="text" id="nickname-input" placeholder="输入你的昵称">
+        <button id="login-button">进入聊天室</button>
     </div>
 
     <script>
+        let nickname = "";  // 存储用户输入的昵称
+
+        const chatContainer = document.getElementById('chat-container');
+        const nicknameContainer = document.getElementById('nickname-container');
         const chatLog = document.getElementById('chat-log');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const nicknameInput = document.getElementById('nickname-input');
+        const loginButton = document.getElementById('login-button');
 
-        // 创建 WebSocket 连接
-        const socket = new WebSocket('ws://127.0.0.1:5678');
+        let socket;
 
-        // 监听消息事件，显示消息
-        socket.onmessage = function (event) {
-            const message = event.data;
-            const newMessageElement = document.createElement('p');
-            newMessageElement.textContent = message;
-            chatLog.appendChild(newMessageElement);
-            chatLog.scrollTop = chatLog.scrollHeight; // 滚动到底部
-        };
+        // 用户登录并输入昵称
+        loginButton.addEventListener('click', function () {
+            nickname = nicknameInput.value;
+            if (nickname.trim() === "") {
+                alert("请输入有效的昵称");
+                return;
+            }
+            // 显示聊天界面，隐藏昵称输入界面
+            chatContainer.style.display = 'flex';
+            nicknameContainer.style.display = 'none';
 
-        // 监听连接关闭事件
-        socket.onclose = function () {
-            const newMessageElement = document.createElement('p');
-            newMessageElement.textContent = '连接已关闭。';
-            chatLog.appendChild(newMessageElement);
-            chatLog.scrollTop = chatLog.scrollHeight;
-        };
+            // 创建 WebSocket 连接
+            socket = new WebSocket('ws://10.103.195.45:5678');  // 替换为你的局域网IP地址
+
+            // 监听消息事件，显示消息
+            socket.onmessage = function (event) {
+                const message = event.data;
+                const [sender, text] = message.split(": ");
+                const newMessageElement = document.createElement('p');
+
+                // 如果发送者不是当前用户，显示消息
+                if (sender !== nickname) {
+                    newMessageElement.textContent = message;
+                    chatLog.appendChild(newMessageElement);
+                    chatLog.scrollTop = chatLog.scrollHeight; // 滚动到底部
+                }
+            };
+
+            // 监听连接关闭事件
+            socket.onclose = function () {
+                const newMessageElement = document.createElement('p');
+                newMessageElement.textContent = '连接已关闭。';
+                chatLog.appendChild(newMessageElement);
+                chatLog.scrollTop = chatLog.scrollHeight;
+            };
+        });
+
+        // 发送消息
+        sendButton.addEventListener('click', function () {
+            const message = messageInput.value;
+            if (message) {
+                const formattedMessage = `${nickname}: ${message}`;  // 包含昵称和消息
+
+                // 本地显示自己发送的消息
+                const selfMessage = document.createElement('p');
+                selfMessage.textContent = `你: ${message}`;
+                selfMessage.classList.add('self');
+
+                chatLog.appendChild(selfMessage);
+                chatLog.scrollTop = chatLog.scrollHeight;
+
+                // 发送消息给服务器
+                socket.send(formattedMessage);
+
+                messageInput.value = ''; // 清空输入框
+            }
+        });
+
+        // 回车键发送消息
+        messageInput.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                sendButton.click();
+            }
+        });
     </script>
 </body>
 
