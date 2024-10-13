@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>聊天室</title>
     <style>
+        /* 样式保持不变，添加私聊消息的样式 */
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f9;
@@ -54,6 +55,11 @@
         #chat-log p.self {
             background-color: #bbdefb;
             align-self: flex-end;
+        }
+
+        /* 私聊消息的样式 */
+        #chat-log p.private {
+            background-color: #ffd54f;
         }
 
         #chat-input-container {
@@ -166,19 +172,35 @@
             nicknameContainer.style.display = 'none';
 
             // 创建 WebSocket 连接
-            socket = new WebSocket('ws://10.103.195.45:5678');  // 替换为你的局域网IP地址
+            socket = new WebSocket('ws://192.168.237.252:5678');  // 替换为你的局域网IP地址
+
+            // 监听连接打开事件，发送昵称给服务器
+            socket.onopen = function () {
+                socket.send(nickname);  // 发送昵称给服务器
+            };
 
             // 监听消息事件，显示消息
             socket.onmessage = function (event) {
                 const message = event.data;
-                const [sender, text] = message.split(": ");
                 const newMessageElement = document.createElement('p');
 
-                // 如果发送者不是当前用户，显示消息
-                if (sender !== nickname) {
+                // 判断是否为私聊消息
+                if (message.startsWith('[私聊]')) {
                     newMessageElement.textContent = message;
+                    newMessageElement.classList.add('private'); // 添加私聊样式
                     chatLog.appendChild(newMessageElement);
                     chatLog.scrollTop = chatLog.scrollHeight; // 滚动到底部
+                } else {
+                    const senderEndIndex = message.indexOf(':');
+                    const sender = message.substring(0, senderEndIndex);
+                    const text = message.substring(senderEndIndex + 1).trim();
+
+                    // 如果发送者不是当前用户，显示消息
+                    if (sender !== nickname) {
+                        newMessageElement.textContent = message;
+                        chatLog.appendChild(newMessageElement);
+                        chatLog.scrollTop = chatLog.scrollHeight; // 滚动到底部
+                    }
                 }
             };
 
@@ -195,18 +217,30 @@
         sendButton.addEventListener('click', function () {
             const message = messageInput.value;
             if (message) {
-                const formattedMessage = `${nickname}: ${message}`;  // 包含昵称和消息
 
-                // 本地显示自己发送的消息
-                const selfMessage = document.createElement('p');
-                selfMessage.textContent = `你: ${message}`;
-                selfMessage.classList.add('self');
+                // 判断是否为私聊消息
+                if (message.startsWith("@")) {
+                    // 私聊消息，本地显示
+                    const targetNickname = message.split(' ')[0].substring(1);
+                    const actualMessage = message.split(' ').slice(1).join(' ');
+                    const selfMessage = document.createElement('p');
+                    selfMessage.textContent = `你对${targetNickname}说: ${actualMessage}`;
+                    selfMessage.classList.add('self', 'private');
 
-                chatLog.appendChild(selfMessage);
-                chatLog.scrollTop = chatLog.scrollHeight;
+                    chatLog.appendChild(selfMessage);
+                    chatLog.scrollTop = chatLog.scrollHeight;
+                } else {
+                    // 公共消息，本地显示
+                    const selfMessage = document.createElement('p');
+                    selfMessage.textContent = `你: ${message}`;
+                    selfMessage.classList.add('self');
+
+                    chatLog.appendChild(selfMessage);
+                    chatLog.scrollTop = chatLog.scrollHeight;
+                }
 
                 // 发送消息给服务器
-                socket.send(formattedMessage);
+                socket.send(message);
 
                 messageInput.value = ''; // 清空输入框
             }

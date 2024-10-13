@@ -1,27 +1,53 @@
 import asyncio
 import websockets
 
-# 存储所有连接的客户端
-connected_clients = set()
+# 存储所有连接的客户端及其昵称
+connected_clients = {}  # websocket: nickname
 
 # 广播消息给所有连接的客户端
-async def broadcast_message(message):
-    if connected_clients:  # 如果有连接的客户端
-        await asyncio.wait([client.send(message) for client in connected_clients])
+async def broadcast_message(message, sender_ws=None):
+    if connected_clients:
+        # 构建要发送消息的协程列表，排除发送者自身
+        coroutines = [ws.send(message) for ws in connected_clients if ws != sender_ws]
+        if coroutines:
+            await asyncio.wait(coroutines)
+
+# 发送消息给特定的客户端
+async def send_private_message(message, recipient_nickname):
+    for ws, nickname in connected_clients.items():
+        if nickname == recipient_nickname:
+            await ws.send(message)
+            break
 
 # 处理每个WebSocket客户端连接的逻辑
 async def handle_client(websocket, path):
-    # 添加新连接的客户端
-    connected_clients.add(websocket)
     try:
+        # 接收客户端发送的昵称作为首次消息
+        nickname = await websocket.recv()
+        connected_clients[websocket] = nickname
+        print(f"{nickname} 已连接")
+
         async for message in websocket:
-            # 广播消息给其他客户端
-            await broadcast_message(message)
+            # 判断是否为私聊消息
+            if message.startswith("@"):
+                # 提取目标昵称和实际消息
+                split_message = message.split(" ", 1)
+                if len(split_message) > 1:
+                    target_nickname = split_message[0][1:]  # 去掉 '@'
+                    actual_message = split_message[1]
+                    formatted_message = f"[私聊]{connected_clients[websocket]} 对你说: {actual_message}"
+                    # 发送私聊消息
+                    await send_private_message(formatted_message, target_nickname)
+            else:
+                # 广播消息给其他客户端
+                formatted_message = f"{connected_clients[websocket]}: {message}"
+                await broadcast_message(formatted_message, sender_ws=websocket)
     except websockets.exceptions.ConnectionClosed as e:
-        print(f"客户端断开连接: {e}")
+        print(f"{connected_clients[websocket]} 已断开连接")
     finally:
         # 客户端断开连接，移除客户端
-        connected_clients.remove(websocket)
+        if websocket in connected_clients:
+            del connected_clients[websocket]
 
 # 启动WebSocket服务器
 start_server = websockets.serve(handle_client, "0.0.0.0", 5678)  # 监听所有网络接口
