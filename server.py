@@ -2,7 +2,7 @@ import asyncio
 import websockets
 
 # 存储所有连接的客户端及其昵称
-connected_clients = {}  # websocket: nickname
+connected_clients = {}  
 
 # 广播消息给所有连接的客户端
 async def broadcast_message(message, sender_ws=None):
@@ -25,7 +25,9 @@ async def handle_client(websocket, path):
         # 接收客户端发送的昵称作为首次消息
         nickname = await websocket.recv()
         connected_clients[websocket] = nickname
-        print(f"{nickname} 已连接")
+        welcome_message = f"{nickname} 进入聊天室"
+        print(welcome_message)
+        # broadcast_message(welcome_message, sender_ws=websocket)
 
         async for message in websocket:
             # 判断是否为私聊消息
