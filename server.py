@@ -19,6 +19,15 @@ async def send_private_message(message, recipient_nickname):
             await ws.send(message)
             break
 
+# 定期发送心跳包
+async def send_heartbeat():
+    while True:
+        if connected_clients:
+            # 向所有连接的客户端发送心跳包
+            coroutines = [ws.send(json.dumps({'type': 'ping'})) for ws in connected_clients]
+            await asyncio.wait(coroutines)
+        await asyncio.sleep(30)  # 每30秒发送一次心跳
+
 # 处理每个WebSocket客户端连接的逻辑
 async def handle_client(websocket, path):
     try:
@@ -63,9 +72,11 @@ async def heartbeat(websocket, interval=30):
             break  # 如果连接关闭，退出心跳循环
 
 # 启动WebSocket服务器
-start_server = websockets.serve(handle_client, "0.0.0.0", 5678)  # 监听所有网络接口
+start_server = websockets.serve(handle_client, "0.0.0.0", 5678)
 
-# 运行服务器
-asyncio.get_event_loop().run_until_complete(start_server)
+# 运行服务器并启动心跳任务
+loop = asyncio.get_event_loop()
+loop.run_until_complete(start_server)
+loop.create_task(send_heartbeat())  # 启动心跳发送任务
 print("服务器已启动...")
-asyncio.get_event_loop().run_forever()
+loop.run_forever()
