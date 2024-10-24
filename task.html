@@ -32,9 +32,19 @@
             flex-direction: column;
         }
 
+        #user-list {
+            padding: 15px;
+            height: 20px;
+            border-bottom: 1px solid #ddd;
+            background-color: #e1f5fe;
+            color: #333;
+            font-weight: bold;
+            /* text-align: center; */
+        }
+
         #chat-log {
             padding: 15px;
-            height: 300px;
+            height: 250px;
             overflow-y: auto;
             border-bottom: 1px solid #ddd;
             font-size: 14px;
@@ -156,6 +166,7 @@
 <body>
     <div id="chat-container" style="display:none;">
         <h1>聊天室</h1>
+        <div id="user-list">当前在线用户：</div> <!-- 用户列表 -->
         <div id="chat-log"></div>
         <div id="chat-input-container">
             <label id="file-upload-icon">
@@ -183,6 +194,7 @@
         const nicknameInput = document.getElementById('nickname-input');
         const loginButton = document.getElementById('login-button');
         const fileInput = document.getElementById('file-input');
+        const userListElement = document.getElementById('user-list'); // 用户列表元素
 
         let socket;
 
@@ -235,6 +247,9 @@
 
                     chatLog.appendChild(newMessageElement);
                     chatLog.scrollTop = chatLog.scrollHeight;
+                } else if (data.type === 'user_list') {
+                    // 更新用户列表
+                    userListElement.innerHTML = '在线用户: ' + data.users.join(', ');
                 } else if (data.type === 'ping') {
                     socket.send(JSON.stringify({ type: 'pong' }));
                 }
