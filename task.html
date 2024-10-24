@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <title>聊天室</title>
     <style>
-        /* 现有样式保持不变 */
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f9;
@@ -97,7 +96,6 @@
             background-color: #1976d2;
         }
 
-        /* 修改部分：为上传文件按钮添加图标 */
         #file-upload-icon {
             display: inline-block;
             cursor: pointer;
@@ -109,7 +107,6 @@
             height: 24px;
         }
 
-        /* 隐藏文件输入框 */
         #file-input {
             display: none;
         }
@@ -161,7 +158,6 @@
         <h1>聊天室</h1>
         <div id="chat-log"></div>
         <div id="chat-input-container">
-            <!-- 添加图标上传按钮 -->
             <label id="file-upload-icon">
                 <img src="icon.png" alt="Upload File" />
                 <input type="file" id="file-input">
@@ -197,26 +193,21 @@
                 alert("请输入有效的昵称");
                 return;
             }
-            // 显示聊天界面，隐藏昵称输入界面
             chatContainer.style.display = 'flex';
             nicknameContainer.style.display = 'none';
 
-            // 创建 WebSocket 连接
             socket = new WebSocket('ws://192.168.168.252:5678');  // 替换为你的局域网IP地址
 
-            // 监听连接打开事件，发送昵称给服务器
             socket.onopen = function () {
                 socket.send(JSON.stringify({ type: 'login', nickname: nickname }));
             };
 
-            // 监听消息事件，显示消息
             socket.onmessage = function (event) {
                 const data = JSON.parse(event.data);
 
                 if (data.type === 'message') {
                     const newMessageElement = document.createElement('p');
 
-                    // 判断是否为私聊消息
                     if (data.private) {
                         newMessageElement.textContent = data.content;
                         newMessageElement.classList.add('private');
@@ -230,7 +221,6 @@
                         }
                     }
                 } else if (data.type === 'file') {
-                    // 处理文件消息
                     const newMessageElement = document.createElement('p');
                     newMessageElement.classList.add('file-message');
                     const fileLink = document.createElement('a');
@@ -246,12 +236,10 @@
                     chatLog.appendChild(newMessageElement);
                     chatLog.scrollTop = chatLog.scrollHeight;
                 } else if (data.type === 'ping') {
-                    // 收到心跳包，发送 pong 响应
                     socket.send(JSON.stringify({ type: 'pong' }));
                 }
             };
 
-            // 监听连接关闭事件
             socket.onclose = function () {
                 const newMessageElement = document.createElement('p');
                 newMessageElement.textContent = '连接已关闭。';
@@ -260,15 +248,12 @@
             };
         });
 
-        // 发送消息
         sendButton.addEventListener('click', function () {
             const message = messageInput.value;
             if (message) {
-                // 检查是否是发送文件的指令
                 if (message.trim().toLowerCase() === '/sendfile') {
-                    // 触发文件选择
                     fileInput.click();
-                    messageInput.value = ''; // 清空输入框
+                    messageInput.value = '';
                 } else {
                     let data = {
                         type: 'message',
@@ -276,7 +261,6 @@
                         sender: nickname
                     };
 
-                    // 判断是否为私聊消息
                     if (message.startsWith("@")) {
                         const targetNickname = message.split(' ')[0].substring(1);
                         const actualMessage = message.split(' ').slice(1).join(' ');
@@ -284,7 +268,6 @@
                         data.private = true;
                         data.recipient = targetNickname;
 
-                        // 本地显示
                         const selfMessage = document.createElement('p');
                         selfMessage.textContent = `你对${targetNickname}说: ${actualMessage}`;
                         selfMessage.classList.add('self', 'private');
@@ -292,7 +275,6 @@
                         chatLog.appendChild(selfMessage);
                         chatLog.scrollTop = chatLog.scrollHeight;
                     } else {
-                        // 公共消息，本地显示
                         const selfMessage = document.createElement('p');
                         selfMessage.textContent = `你: ${message}`;
                         selfMessage.classList.add('self');
@@ -301,22 +283,19 @@
                         chatLog.scrollTop = chatLog.scrollHeight;
                     }
 
-                    // 发送消息给服务器
                     socket.send(JSON.stringify(data));
 
-                    messageInput.value = ''; // 清空输入框
+                    messageInput.value = '';
                 }
             }
         });
 
-        // 回车键发送消息
         messageInput.addEventListener('keydown', function (event) {
             if (event.key === 'Enter') {
                 sendButton.click();
             }
         });
 
-        // 处理文件选择
         fileInput.addEventListener('change', function () {
             const file = fileInput.files[0];
             if (file) {
@@ -332,13 +311,13 @@
                         sender: nickname
                     };
 
-                    // 询问是否私聊发送
                     const recipientNickname = prompt("请输入接收文件的用户名（留空则发送给所有人）：");
-                    if (recipientNickname) {
+                    if (recipientNickname === null) {
+                        return;  // 用户点击了取消，停止文件发送
+                    } else if (recipientNickname) {
                         data.private = true;
                         data.recipient = recipientNickname;
 
-                        // 本地显示
                         const selfMessage = document.createElement('p');
                         selfMessage.classList.add('self', 'file-message', 'private');
                         const fileLink = document.createElement('a');
@@ -350,7 +329,6 @@
                         chatLog.appendChild(selfMessage);
                         chatLog.scrollTop = chatLog.scrollHeight;
                     } else {
-                        // 本地显示
                         const selfMessage = document.createElement('p');
                         selfMessage.classList.add('self', 'file-message');
                         const fileLink = document.createElement('a');
@@ -363,14 +341,12 @@
                         chatLog.scrollTop = chatLog.scrollHeight;
                     }
 
-                    // 发送文件数据给服务器
                     socket.send(JSON.stringify(data));
 
-                    // 清空文件输入框
                     fileInput.value = '';
                 };
 
-                reader.readAsDataURL(file);  // 将文件转换为Data URL
+                reader.readAsDataURL(file);
             }
         });
     </script>
