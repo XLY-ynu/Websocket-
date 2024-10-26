@@ -1,9 +1,23 @@
 import asyncio
 import websockets
 import json
+import mysql.connector
+from datetime import datetime
+import time
 
 # 存储所有连接的客户端及其昵称
 connected_clients = {}
+
+# 为每个客户端维护最后一次收到 pong 的时间
+last_pong_times = {}
+
+# 创建 MySQL 连接
+db_connection = mysql.connector.connect(
+    host="localhost",
+    user="root",  # 替换为你的 MySQL 用户名
+    password="xlyjiayoua666.",  # 替换为你的 MySQL 密码
+    database="chatroom"
+)
 
 # 安全发送消息，处理断开连接的客户端
 async def safe_send(ws, message):
@@ -33,6 +47,46 @@ async def send_private_message(message, recipient_nickname):
             await safe_send(ws, message)
             break
 
+# 保存聊天记录到数据库
+def save_message_to_db(sender, message, recipient=None, is_private=False):
+    cursor = db_connection.cursor()
+    query = """
+    INSERT INTO messages (sender, message, recipient, is_private)
+    VALUES (%s, %s, %s, %s)
+    """
+    cursor.execute(query, (sender, message, recipient, is_private))
+    db_connection.commit()
+    cursor.close()
+
+# 获取聊天历史记录，分开处理公共和私聊消息
+def get_chat_history(nickname=None, include_private=False):
+    cursor = db_connection.cursor(dictionary=True)
+    
+    # 获取公共消息（所有人可见）
+    public_query = """
+        SELECT sender, message, timestamp FROM messages 
+        WHERE is_private = FALSE 
+        ORDER BY timestamp ASC
+    """
+    cursor.execute(public_query)
+    public_messages = cursor.fetchall()
+
+    private_messages = []
+    if include_private and nickname:
+        # 获取与该用户相关的私聊消息
+        private_query = """
+            SELECT sender, message, recipient, timestamp, is_private FROM messages 
+            WHERE is_private = TRUE AND (recipient = %s OR sender = %s)
+            ORDER BY timestamp ASC
+        """
+        cursor.execute(private_query, (nickname, nickname))
+        private_messages = cursor.fetchall()
+
+    cursor.close()
+    
+    # 返回分开的公共和私聊消息
+    return public_messages, private_messages
+
 # 广播在线用户列表
 async def broadcast_user_list():
     if connected_clients:
@@ -44,49 +98,119 @@ async def broadcast_user_list():
         for ws in list(connected_clients):
             await safe_send(ws, json.dumps(user_list_message))
 
-# 定期发送心跳包
 async def send_heartbeat():
+    """定期向所有客户端发送心跳包，并检测超时的客户端。"""
     while True:
-        if connected_clients:
-            for ws in list(connected_clients):
-                await safe_send(ws, json.dumps({'type': 'ping'}))
-        await asyncio.sleep(30)
+        current_time = time.time()
+        disconnected_clients = []
+
+        for ws in list(connected_clients):
+            try:
+                # 向客户端发送 ping 消息
+                await ws.send(json.dumps({'type': 'ping'}))
+            except websockets.exceptions.ConnectionClosed:
+                # 如果发送失败，说明客户端已断开连接
+                nickname = connected_clients.get(ws)
+                if nickname:
+                    print(f"{nickname} 已断开连接")
+                    disconnected_clients.append(ws)
+            else:  # 发送ping成功的情况
+                # 检查客户端是否超时（例如，超过10秒未发送 pong）
+                last_pong = last_pong_times.get(ws)
+                if last_pong is not None and current_time - last_pong > 15:
+                    nickname = connected_clients.get(ws)
+                    if nickname:
+                        print(f"{nickname} 已超时断开")
+                        disconnected_clients.append(ws)
+
+        # 移除已断开的客户端
+        for ws in disconnected_clients:
+            if ws in connected_clients:
+                del connected_clients[ws]
+            if ws in last_pong_times:
+                del last_pong_times[ws]
+
+        # 如果有客户端断开，广播更新后的用户列表
+        if disconnected_clients:
+            await broadcast_user_list()
+
+        # 等待指定的心跳间隔时间（例如，每5秒发送一次心跳）
+        await asyncio.sleep(5)
 
 # 处理每个WebSocket客户端连接的逻辑
 async def handle_client(websocket, path):
     try:
-        async for message in websocket:
-            data = json.loads(message)
+        last_pong_times[websocket] = time.time()
 
-            if data['type'] == 'login':
+        async for message in websocket:  # for循环——服务器持续监听客户端发送的消息
+            data = json.loads(message)  # 将json格式的message转换为字典形式的data
+
+            if data['type'] == 'login':  # 登录时服务器反应
                 nickname = data['nickname']
-                connected_clients[websocket] = nickname
+                connected_clients[websocket] = nickname  # websocket表示当前正在连接的客户端
                 welcome_message = f"{nickname} 进入聊天室"
-                print(welcome_message)
+                print(welcome_message)   # 输出至终端
 
-                # 广播新的在线用户列表
-                await broadcast_user_list()
+                # 广播新的在线用户列表（用于显示在聊天室中）？？？
+                await broadcast_user_list()  
 
+                # 获取公共和私聊聊天记录 ？？？
+                public_chat_history, private_chat_history = get_chat_history(nickname=nickname, include_private=True)
+
+                # 发送之前的公共聊天记录：字典类型msg，包括发送者sender，聊天内容message，发送时间timestamp
+                for msg in public_chat_history:
+                    formatted_message = {
+                        'type': 'message',
+                        'content': msg['message'],
+                        'sender': msg['sender'],
+                        'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                        'is_private': False
+                    }
+                    await safe_send(websocket, json.dumps(formatted_message))
+
+                # 发送该用户之前的私聊记录，字典类型msg，包括发送者sender，聊天内容message，接收者recipient，消息发送的时间timestamp
+                for msg in private_chat_history:
+                    if msg['recipient'] == nickname or msg['sender'] == nickname:
+                        formatted_message = {
+                            'type': 'message',
+                            'content': f"{msg['message']}", #！！！
+                            'sender': msg['sender'],
+                            'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                            'is_private': True,
+                            'recipient': msg['recipient']
+                        }
+                        await safe_send(websocket, json.dumps(formatted_message)) #dumps将字典转换为json，以json格式发送给指定的websocket客户端
             elif data['type'] == 'message':
                 sender_nickname = connected_clients[websocket]
                 content = data['content']
 
                 if data.get('private'):
+                    # 私聊信息格式化！！！
                     recipient_nickname = data['recipient']
                     formatted_message = {
                         'type': 'message',
-                        'content': f"[私聊]{sender_nickname} 对你说: {content}",
+                        'content': f"{content}",
                         'sender': sender_nickname,
                         'private': True
                     }
+                    # 单独转发给接收方
                     await send_private_message(json.dumps(formatted_message), recipient_nickname)
+
+                    # 保存私聊消息到数据库
+                    save_message_to_db(sender_nickname, content, recipient=recipient_nickname, is_private=True)
+                    
                 else:
                     formatted_message = {
                         'type': 'message',
                         'content': content,
-                        'sender': sender_nickname
+                        'sender': sender_nickname,
+                        'is_private': False
                     }
+                    # 广播转发除了自己的用户端
                     await broadcast_message(json.dumps(formatted_message), sender_ws=websocket)
+
+                    # 保存公开消息到数据库
+                    save_message_to_db(sender_nickname, content)
             
             elif data['type'] == 'file':
                 sender_nickname = connected_clients[websocket]
@@ -113,18 +237,21 @@ async def handle_client(websocket, path):
                     await broadcast_message(json.dumps(formatted_message), sender_ws=websocket)
 
             elif data['type'] == 'pong':
-                pass
+                last_pong_times[websocket] = time.time()
 
     except websockets.exceptions.ConnectionClosed as e:
         if websocket in connected_clients:
             print(f"{connected_clients[websocket]} 已断开连接")
             del connected_clients[websocket]
-
-            # 广播更新后的用户列表
+            del last_pong_times[websocket]
             await broadcast_user_list()
 
-# 启动WebSocket服务器
-start_server = websockets.serve(handle_client, "0.0.0.0", 5678)
+# 创建并启动一个WebSocket服务器
+# 任何客户端通过5678端口访问WebSocket服务都会被监听到
+# 每当一个客户端连接到服务器时，handle_client函数会接管该连接
+start_server = websockets.serve(
+    handle_client, "0.0.0.0", 5678,
+)
 
 # 运行服务器并启动心跳任务
 loop = asyncio.get_event_loop()
