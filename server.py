@@ -4,6 +4,7 @@ import json
 import mysql.connector
 from datetime import datetime
 import time
+import base64
 
 # 存储所有连接的客户端及其昵称
 connected_clients = {}
@@ -98,6 +99,44 @@ async def broadcast_user_list():
         for ws in list(connected_clients):
             await safe_send(ws, json.dumps(user_list_message))
 
+# 保存文件到数据库
+def save_file_to_db(file_name, file_data, sender, recipient=None, is_private=False):
+    cursor = db_connection.cursor()
+    query = """
+    INSERT INTO files (file_name, file_data, sender, recipient, is_private)
+    VALUES (%s, %s, %s, %s, %s)
+    """
+    cursor.execute(query, (file_name, file_data, sender, recipient, is_private))
+    db_connection.commit()
+    cursor.close()
+
+def get_file_history(nickname=None, include_private=False):
+    cursor = db_connection.cursor(dictionary=True)
+    
+    # 获取公共文件
+    public_files_query = """
+        SELECT file_name, file_data, sender, timestamp FROM files 
+        WHERE is_private = FALSE 
+        ORDER BY timestamp ASC
+    """
+    cursor.execute(public_files_query)
+    public_files = cursor.fetchall()
+
+    private_files = []
+    if include_private and nickname:
+        # 获取与该用户相关的私聊文件
+        private_files_query = """
+            SELECT file_name, file_data, sender, recipient, timestamp, is_private FROM files 
+            WHERE is_private = TRUE AND (recipient = %s OR sender = %s)
+            ORDER BY timestamp ASC
+        """
+        cursor.execute(private_files_query, (nickname, nickname))
+        private_files = cursor.fetchall()
+
+    cursor.close()
+    return public_files, private_files
+
+
 async def send_heartbeat():
     """定期向所有客户端发送心跳包，并检测超时的客户端。"""
     while True:
@@ -156,6 +195,7 @@ async def handle_client(websocket, path):
 
                 # 获取公共和私聊聊天记录 ？？？
                 public_chat_history, private_chat_history = get_chat_history(nickname=nickname, include_private=True)
+                public_files, private_files = get_file_history(nickname=nickname, include_private=True)
 
                 # 发送之前的公共聊天记录：字典类型msg，包括发送者sender，聊天内容message，发送时间timestamp
                 for msg in public_chat_history:
@@ -180,6 +220,35 @@ async def handle_client(websocket, path):
                             'recipient': msg['recipient']
                         }
                         await safe_send(websocket, json.dumps(formatted_message)) #dumps将字典转换为json，以json格式发送给指定的websocket客户端
+
+                # 发送公共文件
+                for file in public_files:
+                    file_data_uri = 'data:;base64,' + base64.b64encode(file['file_data']).decode()
+                    formatted_file = {
+                        'type': 'file',
+                        'fileName': file['file_name'],
+                        'fileData': file_data_uri,
+                        'sender': file['sender'],
+                        'timestamp': file['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                        'is_private': False
+                    }
+                    await safe_send(websocket, json.dumps(formatted_file))
+
+                # 发送私聊文件
+                for file in private_files:
+                    file_data_uri = 'data:;base64,' + base64.b64encode(file['file_data']).decode()
+                    if file['recipient'] == nickname or file['sender'] == nickname:
+                        formatted_file = {
+                            'type': 'file',
+                            'fileName': file['file_name'],
+                            'fileData': file_data_uri,
+                            'sender': file['sender'],
+                            'timestamp': file['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                            'is_private': True,
+                            'recipient': file['recipient']
+                        }
+                        await safe_send(websocket, json.dumps(formatted_file))
+
             elif data['type'] == 'message':
                 sender_nickname = connected_clients[websocket]
                 content = data['content']
@@ -217,6 +286,9 @@ async def handle_client(websocket, path):
                 file_name = data['fileName']
                 file_data = data['fileData']
 
+                # 将文件数据从 base64 解码为二进制数据
+                binary_file_data = base64.b64decode(file_data.split(',')[1])  # 假设 dataURI 格式的数据
+
                 if data.get('private'):
                     recipient_nickname = data['recipient']
                     formatted_message = {
@@ -227,6 +299,9 @@ async def handle_client(websocket, path):
                         'private': True
                     }
                     await send_private_message(json.dumps(formatted_message), recipient_nickname)
+
+                    # 保存私聊文件到数据库
+                    save_file_to_db(file_name, binary_file_data, sender_nickname, recipient=recipient_nickname, is_private=True)
                 else:
                     formatted_message = {
                         'type': 'file',
@@ -235,6 +310,10 @@ async def handle_client(websocket, path):
                         'sender': sender_nickname
                     }
                     await broadcast_message(json.dumps(formatted_message), sender_ws=websocket)
+                    
+                    # 保存公开文件到数据库
+                    save_file_to_db(file_name, binary_file_data, sender_nickname)
+
 
             elif data['type'] == 'pong':
                 last_pong_times[websocket] = time.time()

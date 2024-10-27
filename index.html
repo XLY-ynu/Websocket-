@@ -229,7 +229,7 @@
                         if (data.sender === nickname) {
                             // 如果当前用户是消息的发送者
                             newMessageElement.textContent = `[私聊] 你对 ${data.recipient} 说: ${data.content}`;
-                            newMessageElement.style.backgroundColor = '#d1f7c4'; // 可以使用不同颜色标识自己发送的私聊消息
+                            newMessageElement.style.backgroundColor = '#ffd54f'; // 可以使用不同颜色标识自己发送的私聊消息
                         } else if (data.recipient === nickname) {
                             // 如果当前用户是消息的接收者
                             newMessageElement.textContent = `[私聊] ${data.sender} 对你说: ${data.content}`;
@@ -257,7 +257,19 @@
                     const fileLink = document.createElement('a'); // 新建a标签，显示文件下载连接
                     fileLink.href = data.fileData;
                     fileLink.download = data.fileName;
-                    fileLink.textContent = `${data.sender} 发送了文件: ${data.fileName}`;
+                    if (data.private) {
+                        fileLink.textContent = `$[私发] ${data.sender} 向你发送了文件: ${data.fileName}`;
+                    } else if (data.is_private) {
+                        if (data.sender === nickname) {
+                            // 如果当前用户是文件的发送者
+                            fileLink.textContent = `[私发] 你向${data.recipient}发送了文件: ${data.fileName}`;
+                        } else if (data.recipient === nickname) {
+                            // 如果当前用户是文件的接收者
+                            fileLink.textContent = `[私发] ${data.sender} 向你发送了文件: ${data.fileName}`;
+                        }
+                    } else {
+                        fileLink.textContent = `${data.sender} 发送了文件: ${data.fileName}`;
+                    }
                     newMessageElement.appendChild(fileLink); // 将a标签嵌入到p标签下
 
                     if (data.private) {
