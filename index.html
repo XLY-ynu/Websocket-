@@ -258,7 +258,7 @@
                     fileLink.href = data.fileData;
                     fileLink.download = data.fileName;
                     if (data.private) {
-                        fileLink.textContent = `$[私发] ${data.sender} 向你发送了文件: ${data.fileName}`;
+                        fileLink.textContent = `[私发] ${data.sender} 向你发送了文件: ${data.fileName}`;
                     } else if (data.is_private) {
                         if (data.sender === nickname) {
                             // 如果当前用户是文件的发送者
@@ -270,7 +270,15 @@
                     } else {
                         fileLink.textContent = `${data.sender} 发送了文件: ${data.fileName}`;
                     }
+
                     newMessageElement.appendChild(fileLink); // 将a标签嵌入到p标签下
+
+                    if (data.timestamp) {
+                        const timeElement = document.createElement('div');
+                        timeElement.textContent = ` (${data.timestamp})`;
+                        timeElement.style.fontSize = 'smaller';
+                        newMessageElement.appendChild(timeElement);
+                    }
 
                     if (data.private) {
                         newMessageElement.classList.add('private'); // p标签下加入private类
@@ -313,7 +321,7 @@
 
                     const selfMessage = document.createElement('p');
                     // 显示私聊信息！！！
-                    selfMessage.textContent = `你对${targetNickname}说: ${actualMessage}`;
+                    selfMessage.textContent = `[私聊] 你对${targetNickname}说: ${actualMessage}`;
                     selfMessage.classList.add('self', 'private'); // 在p标签加入"self private"类
 
                     chatLog.appendChild(selfMessage);
@@ -371,7 +379,7 @@
                         const fileLink = document.createElement('a');
                         fileLink.href = fileData;
                         fileLink.download = file.name;
-                        fileLink.textContent = `你向 ${recipientNickname} 发送了文件: ${file.name}`;
+                        fileLink.textContent = `[私发] 你向 ${recipientNickname} 发送了文件: ${file.name}`;
                         selfMessage.appendChild(fileLink);
 
                         chatLog.appendChild(selfMessage);

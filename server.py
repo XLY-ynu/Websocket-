@@ -176,6 +176,67 @@ async def send_heartbeat():
         # 等待指定的心跳间隔时间（例如，每5秒发送一次心跳）
         await asyncio.sleep(5)
 
+# 获取聊天历史记录并添加时间戳字段
+def get_combined_chat_history(nickname=None, include_private=False):
+    public_chat_history, private_chat_history = get_chat_history(nickname=nickname, include_private=include_private)
+    public_files, private_files = get_file_history(nickname=nickname, include_private=include_private)
+
+    combined_history = []
+
+    # 添加公共消息
+    for msg in public_chat_history:
+        combined_history.append({
+            'type': 'message',
+            'content': msg['message'],
+            'sender': msg['sender'],
+            'timestamp': msg['timestamp'],
+            'is_private': False
+        })
+
+    # 添加私聊消息
+    for msg in private_chat_history:
+        if msg['recipient'] == nickname or msg['sender'] == nickname:
+            combined_history.append({
+                'type': 'message',
+                'content': msg['message'],
+                'sender': msg['sender'],
+                'timestamp': msg['timestamp'],
+                'is_private': True,
+                'recipient': msg['recipient']
+            })
+
+    # 添加公共文件
+    for file in public_files:
+        file_data_uri = 'data:;base64,' + base64.b64encode(file['file_data']).decode()
+        combined_history.append({
+            'type': 'file',
+            'fileName': file['file_name'],
+            'fileData': file_data_uri,
+            'sender': file['sender'],
+            'timestamp': file['timestamp'],
+            'is_private': False
+        })
+
+    # 添加私聊文件
+    for file in private_files:
+        file_data_uri = 'data:;base64,' + base64.b64encode(file['file_data']).decode()
+        if file['recipient'] == nickname or file['sender'] == nickname:
+            combined_history.append({
+                'type': 'file',
+                'fileName': file['file_name'],
+                'fileData': file_data_uri,
+                'sender': file['sender'],
+                'timestamp': file['timestamp'],
+                'is_private': True,
+                'recipient': file['recipient']
+            })
+
+    # 根据 timestamp 排序
+    combined_history.sort(key=lambda x: x['timestamp'])
+
+    return combined_history
+
+
 # 处理每个WebSocket客户端连接的逻辑
 async def handle_client(websocket, path):
     try:
@@ -194,60 +255,12 @@ async def handle_client(websocket, path):
                 await broadcast_user_list()  
 
                 # 获取公共和私聊聊天记录 ？？？
-                public_chat_history, private_chat_history = get_chat_history(nickname=nickname, include_private=True)
-                public_files, private_files = get_file_history(nickname=nickname, include_private=True)
+                combined_history = get_combined_chat_history(nickname=nickname, include_private=True)
 
-                # 发送之前的公共聊天记录：字典类型msg，包括发送者sender，聊天内容message，发送时间timestamp
-                for msg in public_chat_history:
-                    formatted_message = {
-                        'type': 'message',
-                        'content': msg['message'],
-                        'sender': msg['sender'],
-                        'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-                        'is_private': False
-                    }
-                    await safe_send(websocket, json.dumps(formatted_message))
-
-                # 发送该用户之前的私聊记录，字典类型msg，包括发送者sender，聊天内容message，接收者recipient，消息发送的时间timestamp
-                for msg in private_chat_history:
-                    if msg['recipient'] == nickname or msg['sender'] == nickname:
-                        formatted_message = {
-                            'type': 'message',
-                            'content': f"{msg['message']}", #！！！
-                            'sender': msg['sender'],
-                            'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-                            'is_private': True,
-                            'recipient': msg['recipient']
-                        }
-                        await safe_send(websocket, json.dumps(formatted_message)) #dumps将字典转换为json，以json格式发送给指定的websocket客户端
-
-                # 发送公共文件
-                for file in public_files:
-                    file_data_uri = 'data:;base64,' + base64.b64encode(file['file_data']).decode()
-                    formatted_file = {
-                        'type': 'file',
-                        'fileName': file['file_name'],
-                        'fileData': file_data_uri,
-                        'sender': file['sender'],
-                        'timestamp': file['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-                        'is_private': False
-                    }
-                    await safe_send(websocket, json.dumps(formatted_file))
-
-                # 发送私聊文件
-                for file in private_files:
-                    file_data_uri = 'data:;base64,' + base64.b64encode(file['file_data']).decode()
-                    if file['recipient'] == nickname or file['sender'] == nickname:
-                        formatted_file = {
-                            'type': 'file',
-                            'fileName': file['file_name'],
-                            'fileData': file_data_uri,
-                            'sender': file['sender'],
-                            'timestamp': file['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-                            'is_private': True,
-                            'recipient': file['recipient']
-                        }
-                        await safe_send(websocket, json.dumps(formatted_file))
+                 # 发送历史记录
+                for record in combined_history:
+                    record['timestamp'] = record['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+                    await safe_send(websocket, json.dumps(record))
 
             elif data['type'] == 'message':
                 sender_nickname = connected_clients[websocket]
